@@ -5,7 +5,6 @@ import net.querz.nbt.io.NBTSerializer;
 import net.querz.nbt.io.NamedTag;
 import net.querz.nbt.tag.CompoundTag;
 import net.querz.nbt.tag.ListTag;
-import net.querz.nbt.tag.Tag;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -115,6 +114,18 @@ public class Chunk implements Iterable<Section> {
     } else {
       throw new IOException("invalid data tag: " + (tag == null ? "null" : tag.getClass().getName()));
     }
+  }
+
+  /**
+   * @return whether the chunks has a biome other than plains
+   */
+  public boolean hasSpecialBiomes() {
+    for (byte b : biomes) {
+      if (b != 1) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
