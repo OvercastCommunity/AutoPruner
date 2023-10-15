@@ -1,4 +1,4 @@
-package oc.tc.autopruner;
+package tc.oc.occ.autopruner;
 
 import com.formdev.flatlaf.FlatLightLaf;
 

@@ -1,4 +1,4 @@
-package oc.tc.autopruner;
+package tc.oc.occ.autopruner;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;

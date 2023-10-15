@@ -37,7 +37,7 @@
         <configuration>
           <archive>
             <manifest>
-              <mainClass>oc.tc.autopruner.AutoPrunerCLIMain</mainClass>
+              <mainClass>tc.oc.occ.autopruner.AutoPrunerCLIMain</mainClass>
             </manifest>
           </archive>
         </configuration>
@@ -62,7 +62,7 @@
           </filters>
           <transformers>
             <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-              <mainClass>oc.tc.autopruner.AutoPrunerCLIMain</mainClass>
+              <mainClass>tc.oc.occ.autopruner.AutoPrunerCLIMain</mainClass>
             </transformer>
           </transformers>
         </configuration>
