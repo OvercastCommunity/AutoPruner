@@ -1,98 +1,69 @@
 package oc.tc.autopruner;
 
-import com.formdev.flatlaf.FlatLightLaf;
 import net.querz.mca.Chunk;
 import net.querz.mca.MCAFile;
 import net.querz.mca.MCAUtil;
 import net.querz.mca.Section;
 import net.querz.nbt.tag.CompoundTag;
 import net.querz.nbt.tag.ListTag;
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
 
-import javax.swing.*;
-import java.awt.*;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.text.DecimalFormat;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 
-public class AutoPruner {
+public interface AutoPruner {
+  Logger logger = getLogger();
 
-  public static Logger logger;
-
-  public static void main(String[] args) {
+  static Logger getLogger() {
     System.setProperty("java.util.logging.SimpleFormatter.format",
         "%1$tF %1$tT %4$s %2$s %5$s%6$s%n");
-    logger = Logger.getLogger("AutoPruner");
-    CommandLine cmd = processOptions(args);
-    if (cmd == null) return;
-
-    if (cmd.hasOption("file")) {
-      String filePath = cmd.getOptionValue("file");
-      pruneMCAFile(filePath, null);
-    } else if (cmd.hasOption("directory")) {
-      String directoryPath = cmd.getOptionValue("directory");
-      long sizeDeleted = recursivelyProcessFiles(new File(directoryPath), 0, null);
-      logger.info("Deleted " + readableFileSize(sizeDeleted) + " from: " + directoryPath);
-    } else {
-      System.out.println("Must specify --file or --directory to use as a cli");
-      FlatLightLaf.setup();
-
-      //Schedule a job for the event-dispatching thread:
-      //creating and showing this application's GUI.
-      javax.swing.SwingUtilities.invokeLater(() -> {
-        JFrame frame = new JFrame("AutoPruner");
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-
-        JTextArea textArea = new JTextArea();
-        textArea.setEditable(false);
-
-        JScrollPane areaScrollPane = new JScrollPane(textArea);
-        areaScrollPane.setVerticalScrollBarPolicy(
-            JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
-        areaScrollPane.setPreferredSize(new Dimension(900, 400));
-
-        frame.add(areaScrollPane);
-        frame.pack();
-        frame.setVisible(true);
-
-        JFileChooser fc = new JFileChooser();
-        fc.setCurrentDirectory(new File(""));
-        fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-        int option = fc.showDialog(frame, "Prune Map(s)");
-
-        if (option == JFileChooser.APPROVE_OPTION) {
-          File file = fc.getSelectedFile();
-          System.out.println("Selected: " + file.getAbsolutePath());
-          textArea.append("Selected: " + file.getAbsolutePath() + "\n");
-
-          new SwingWorker() {
-            @Override
-            protected Object doInBackground() throws Exception {
-              recursivelyProcessFiles(file, 28, textArea);
-              return null;
-            }
-          }.execute();
-
-        } else {
-          System.exit(0);
-        }
-      });
-    }
+    return Logger.getLogger("AutoPruner");
   }
 
-  private static void addTextToFrame(String text, JTextArea jTextArea) {
-    jTextArea.append(text + "\n");
+  /**
+   * Prune MCA File using class logger
+   * @param filePath
+   */
+  static void pruneMCAFileLogger(String filePath) {
+    pruneMCAFile(filePath, logger::info, logger::warning);
   }
 
-  private static long recursivelyProcessFiles(File file, long depth, JTextArea container) {
+  /**
+   * Recursively prune directories using class logger
+   * @param file
+   * @param depth
+   * @return
+   */
+  static long recursivelyProcessFiles(File file, long depth) {
+    long sizeDeleted = recursivelyProcessFiles(file, depth, logger::info, logger::warning);
+    logger.info("Deleted " + AutoPruner.readableFileSize(sizeDeleted) + " from: " + file.getAbsolutePath());
+    return sizeDeleted;
+  }
+
+
+  /**
+   * Recursively prune directories using consumer to log
+   * @param file
+   * @param depth
+   * @param logging
+   * @return bytes removed
+   */
+  static long recursivelyProcessFiles(File file, long depth, Consumer<String> logging) {
+    return recursivelyProcessFiles(file, depth, logging, logging);
+  }
+
+  /**
+   * Recursively prune directories using consumers to log
+   * @param file
+   * @param depth
+   * @param infoLogging
+   * @param warnLogging
+   * @return bytes removed
+   */
+  static long recursivelyProcessFiles(File file, long depth, Consumer<String> infoLogging, Consumer<String> warnLogging) {
     long sizeDeleted = 0;
     if (depth > 30) {
       return 0;
@@ -101,16 +72,32 @@ public class AutoPruner {
     if (files != null) {
       for (File childFile : files) {
         if (childFile.isDirectory()) {
-          sizeDeleted += recursivelyProcessFiles(childFile, depth, container);
+          sizeDeleted += recursivelyProcessFiles(childFile, depth, infoLogging, warnLogging);
         } else if (childFile.isFile() && childFile.getName().endsWith(".mca")) {
-          sizeDeleted += pruneMCAFile(childFile.getAbsolutePath(), container);
+          sizeDeleted += pruneMCAFile(childFile.getAbsolutePath(), infoLogging, warnLogging);
         }
       }
     }
     return sizeDeleted;
   }
 
-  private static long pruneMCAFile(String path, JTextArea container) {
+  /**
+   * Prune without logging
+   * @param path
+   * @return bytes removed
+   */
+  static long pruneMCAFile(String path) {
+    return pruneMCAFile(path, (message) -> {}, (message) -> {});
+  }
+
+  /**
+   * Prune MCA File and using the provided consumers to log
+   * @param path
+   * @param infoLogging consumer
+   * @param warnLogging consumer
+   * @return bytes removed
+   */
+  static long pruneMCAFile(String path, Consumer<String> infoLogging, Consumer<String> warnLogging) {
     long sizeChange = 0;
     try {
       File regionFile = new File(path);
@@ -153,66 +140,31 @@ public class AutoPruner {
       if (regionFileEmpty) {
         Files.deleteIfExists(Paths.get(path));
         String deleteMessage = "Deleted file (" + readableFileSize(initialSize) + ") : " + path;
-        logger.info(deleteMessage);
-        if (container != null) {
-          addTextToFrame(deleteMessage, container);
-        }
+        infoLogging.accept(deleteMessage);
         sizeChange = initialSize;
       } else {
         MCAUtil.write(mcaFile, path);
         long newSize = regionFile.length();
         sizeChange = initialSize - newSize;
         String deleteMessage = "Deleted " + readableFileSize(sizeChange) + " from: " + path;
-        logger.info(deleteMessage);
-        if (container != null) {
-          addTextToFrame(deleteMessage, container);
-        }
+        infoLogging.accept(deleteMessage);
       }
     } catch (Exception e) {
       String warnMessage = "Failed to parse file: " + path + ", " + e.getMessage();
-      logger.warning(warnMessage);
-      if (container != null) {
-        addTextToFrame(warnMessage, container);
-      }
-      e.printStackTrace();
+      warnLogging.accept(warnMessage);
     }
     return sizeChange;
   }
 
-  public static String readableFileSize(long size) {
+  /**
+   * @param size in bytes
+   * @return Human readable file size String
+   */
+  static String readableFileSize(long size) {
     if (size <= 0) return "0";
     final String[] units = new String[]{"B", "kB", "MB", "GB", "TB"};
     int digitGroups = (int) (Math.log10(size) / Math.log10(1024));
     return new DecimalFormat("#,##0.#").format(size / Math.pow(1024, digitGroups)) + " " + units[digitGroups];
   }
 
-  private static CommandLine processOptions(String[] args) {
-    Options options = new Options();
-
-    Option fileOption = new Option(
-        "f",
-        "file",
-        true,
-        "Path for .mca file to prune");
-    fileOption.setRequired(false);
-    options.addOption(fileOption);
-
-    Option directoryOption = new Option(
-        "d",
-        "directory",
-        true,
-        "Path for directory containing .mca files");
-    directoryOption.setRequired(false);
-    options.addOption(directoryOption);
-
-    CommandLineParser parser = new DefaultParser();
-    HelpFormatter formatter = new HelpFormatter();
-    try {
-      return parser.parse(options, args);
-    } catch (ParseException e) {
-      System.out.println(e.getMessage());
-      formatter.printHelp("java -jar AutoPruner.jar", options);
-      return null;
-    }
-  }
 }
