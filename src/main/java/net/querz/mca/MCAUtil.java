@@ -1,5 +1,6 @@
 package net.querz.mca;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -24,11 +25,10 @@ public final class MCAUtil {
    * @throws IOException if something during deserialization goes wrong.
    */
   public static MCAFile read(File file) throws IOException {
+    byte[] bytes = Files.readAllBytes(file.toPath());
     MCAFile mcaFile = newMCAFile(file);
-    try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-      mcaFile.deserialize(raf);
-      return mcaFile;
-    }
+    mcaFile.deserialize(new ByteArrayInputStream(bytes));
+    return mcaFile;
   }
 
   /**

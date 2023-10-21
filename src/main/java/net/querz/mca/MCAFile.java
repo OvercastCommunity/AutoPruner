@@ -1,5 +1,6 @@
 package net.querz.mca;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.Arrays;
@@ -59,6 +60,39 @@ public class MCAFile implements Iterable<Chunk> {
       Chunk chunk = new Chunk(timestamp);
       raf.seek(4096L * offset + 4); //+4: skip data size
       chunk.deserialize(raf);
+      chunks[i] = chunk;
+    }
+  }
+
+  /**
+   * Reads an .mca file from a {@code RandomAccessFile} into this object.
+   * This method does not perform any cleanups on the data.
+   *
+   * @param inputStream The {@code ByteArrayInputStream} to read from.
+   * @throws IOException If something went wrong during deserialization.
+   */
+  public void deserialize(ByteArrayInputStream inputStream) throws IOException {
+    chunks = new Chunk[1024];
+    for (int i = 0; i < 1024; i++) {
+      inputStream.reset();
+      inputStream.skip(i * 4);
+      int offset = inputStream.read() << 16;
+      offset |= (inputStream.read() & 0xFF) << 8;
+      offset |= inputStream.read() & 0xFF;
+      if (inputStream.read() == 0) {
+        continue;
+      }
+      inputStream.reset();
+      inputStream.skip(4096 + i * 4);
+      int ch1 = inputStream.read();
+      int ch2 = inputStream.read();
+      int ch3 = inputStream.read();
+      int ch4 = inputStream.read();
+      int timestamp = ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4));
+      Chunk chunk = new Chunk(timestamp);
+      inputStream.reset();
+      inputStream.skip(4096L * offset + 4); //+4: skip data size
+      chunk.deserialize(inputStream);
       chunks[i] = chunk;
     }
   }

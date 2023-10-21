@@ -83,7 +83,8 @@ public class NBTInputStream extends DataInputStream implements NBTInput, MaxDept
 
   private static ByteArrayTag readByteArray(NBTInputStream in) throws IOException {
     ByteArrayTag bat = new ByteArrayTag(new byte[in.readInt()]);
-    in.readFully(bat.getValue());
+    byte[] bytes = bat.getValue();
+    in.in.read(bytes, 0, bytes.length);
     return bat;
   }
 

@@ -25,6 +25,7 @@ public interface AutoPruner {
 
   /**
    * Prune MCA File using class logger
+   *
    * @param filePath
    */
   static void pruneMCAFileLogger(String filePath) {
@@ -33,6 +34,7 @@ public interface AutoPruner {
 
   /**
    * Recursively prune directories using class logger
+   *
    * @param file
    * @param depth
    * @return
@@ -46,6 +48,7 @@ public interface AutoPruner {
 
   /**
    * Recursively prune directories using consumer to log
+   *
    * @param file
    * @param depth
    * @param logging
@@ -57,6 +60,7 @@ public interface AutoPruner {
 
   /**
    * Recursively prune directories using consumers to log
+   *
    * @param file
    * @param depth
    * @param infoLogging
@@ -83,15 +87,19 @@ public interface AutoPruner {
 
   /**
    * Prune without logging
+   *
    * @param path
    * @return bytes removed
    */
   static long pruneMCAFile(String path) {
-    return pruneMCAFile(path, (message) -> {}, (message) -> {});
+    return pruneMCAFile(path, (message) -> {
+    }, (message) -> {
+    });
   }
 
   /**
    * Prune MCA File and using the provided consumers to log
+   *
    * @param path
    * @param infoLogging consumer
    * @param warnLogging consumer
@@ -99,6 +107,7 @@ public interface AutoPruner {
    */
   static long pruneMCAFile(String path, Consumer<String> infoLogging, Consumer<String> warnLogging) {
     long sizeChange = 0;
+    boolean actionTaken = false;
     try {
       File regionFile = new File(path);
       long initialSize = regionFile.length();
@@ -109,6 +118,10 @@ public interface AutoPruner {
         Chunk chunk = mcaFile.getChunk(i);
 
         if (chunk == null) continue;
+
+        if (chunk.changesMade()) {
+          actionTaken = true;
+        }
 
         ListTag<CompoundTag> entities = chunk.getEntities();
         if (entities != null && entities.size() > 0) {
@@ -135,6 +148,7 @@ public interface AutoPruner {
 
         if (empty && !chunk.hasSpecialBiomes()) {
           mcaFile.setChunk(i, null);
+          actionTaken = true;
         }
       }
       if (regionFileEmpty) {
@@ -142,12 +156,15 @@ public interface AutoPruner {
         String deleteMessage = "Deleted file (" + readableFileSize(initialSize) + ") : " + path;
         infoLogging.accept(deleteMessage);
         sizeChange = initialSize;
-      } else {
+      } else if (actionTaken) {
         MCAUtil.write(mcaFile, path);
         long newSize = regionFile.length();
         sizeChange = initialSize - newSize;
         String deleteMessage = "Deleted " + readableFileSize(sizeChange) + " from: " + path;
         infoLogging.accept(deleteMessage);
+      } else {
+        // Avoid unnecessary disk writes
+        infoLogging.accept("Skipping already Pruned File: " + path);
       }
     } catch (Exception e) {
       String warnMessage = "Failed to parse file: " + path + ", " + e.getMessage();

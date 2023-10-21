@@ -8,6 +8,7 @@ import net.querz.nbt.tag.ListTag;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -32,6 +33,7 @@ public class Chunk implements Iterable<Section> {
   private ListTag entities;
   private ListTag tileEntities;
   private ListTag tileTicks;
+  private boolean changesMade = false;
 
   Chunk(int lastMCAUpdate) {
     this.lastMCAUpdate = lastMCAUpdate;
@@ -64,7 +66,11 @@ public class Chunk implements Iterable<Section> {
         for (CompoundTag section : sourceSections.asCompoundTagList()) {
           int sectionIndex = section.getNumber("Y").byteValue();
           Section newSection = new Section(section);
-          sections.put(sectionIndex, newSection);
+          if (!newSection.isEmpty()) {
+            sections.put(sectionIndex, newSection);
+          } else {
+            changesMade = true;
+          }
         }
       } catch (Exception e) {
         // ignore, no sections
@@ -107,6 +113,28 @@ public class Chunk implements Iterable<Section> {
       throw new IOException("invalid compression type " + compressionTypeByte);
     }
     BufferedInputStream dis = new BufferedInputStream(compressionType.decompress(new FileInputStream(raf.getFD())));
+    NamedTag tag = new NBTDeserializer(false).fromStream(dis);
+    if (tag != null && tag.getTag() instanceof CompoundTag) {
+      data = (CompoundTag) tag.getTag();
+      initReferences();
+    } else {
+      throw new IOException("invalid data tag: " + (tag == null ? "null" : tag.getClass().getName()));
+    }
+  }
+
+  /**
+   * Reads chunk data from a RandomAccessFile. The RandomAccessFile must already be at the correct position.
+   *
+   * @param raf The RandomAccessFile to read the chunk data from.
+   * @throws IOException When something went wrong during reading.
+   */
+  public void deserialize(ByteArrayInputStream byteArrayInputStream) throws IOException {
+    byte compressionTypeByte = (byte) byteArrayInputStream.read();
+    CompressionType compressionType = CompressionType.getFromID(compressionTypeByte);
+    if (compressionType == null) {
+      throw new IOException("invalid compression type " + compressionTypeByte);
+    }
+    BufferedInputStream dis = new BufferedInputStream(compressionType.decompress(byteArrayInputStream));
     NamedTag tag = new NBTDeserializer(false).fromStream(dis);
     if (tag != null && tag.getTag() instanceof CompoundTag) {
       data = (CompoundTag) tag.getTag();
@@ -197,5 +225,9 @@ public class Chunk implements Iterable<Section> {
   @Override
   public Iterator<Section> iterator() {
     return sections.values().iterator();
+  }
+
+  public boolean changesMade() {
+    return changesMade;
   }
 }
