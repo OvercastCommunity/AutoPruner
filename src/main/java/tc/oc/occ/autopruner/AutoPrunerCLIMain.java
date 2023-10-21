@@ -9,9 +9,10 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
 import java.io.File;
+import java.util.concurrent.ExecutionException;
 
 public class AutoPrunerCLIMain {
-  public static void main(String[] args) {
+  public static void main(String[] args) throws ExecutionException, InterruptedException {
     CommandLine cmd = processOptions(args);
     if (cmd == null) return;
 
@@ -20,7 +21,16 @@ public class AutoPrunerCLIMain {
       AutoPruner.pruneMCAFileLogger(filePath);
     } else if (cmd.hasOption("directory")) {
       String directoryPath = cmd.getOptionValue("directory");
-      AutoPruner.recursivelyProcessFiles(new File(directoryPath), 0);
+
+      if (cmd.hasOption("threads")) {
+        int threads = Integer.parseInt(cmd.getOptionValue("threads"));
+
+        ThreadPoolAutoPruner threadPoolAutoPruner = new ThreadPoolAutoPruner(threads);
+        threadPoolAutoPruner.recursivelyProcessFiles(new File(directoryPath), 0);
+        threadPoolAutoPruner.close();
+      } else {
+        AutoPruner.recursivelyProcessFiles(new File(directoryPath), 0);
+      }
     } else {
       new AutoPrunerGui().buildAndRunGui();
     }
@@ -44,6 +54,14 @@ public class AutoPrunerCLIMain {
         "Path for directory containing .mca files");
     directoryOption.setRequired(false);
     options.addOption(directoryOption);
+
+    Option threadOption = new Option(
+        "t",
+        "threads",
+        true,
+        "Number of threads to use");
+    threadOption.setRequired(false);
+    options.addOption(threadOption);
 
     CommandLineParser parser = new DefaultParser();
     HelpFormatter formatter = new HelpFormatter();
