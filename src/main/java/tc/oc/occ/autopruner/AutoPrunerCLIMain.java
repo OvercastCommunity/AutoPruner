@@ -16,9 +16,14 @@ public class AutoPrunerCLIMain {
     CommandLine cmd = processOptions(args);
     if (cmd == null) return;
 
+    boolean dryRun = cmd.hasOption("dry-run");
+    if (dryRun) {
+      AutoPruner.logger.info("Dry run: previewing changes, no files will be modified.");
+    }
+
     if (cmd.hasOption("file")) {
       String filePath = cmd.getOptionValue("file");
-      AutoPruner.pruneMCAFileLogger(filePath);
+      AutoPruner.pruneMCAFileLogger(filePath, dryRun);
     } else if (cmd.hasOption("directory")) {
       String directoryPath = cmd.getOptionValue("directory");
 
@@ -26,10 +31,10 @@ public class AutoPrunerCLIMain {
         int threads = Integer.parseInt(cmd.getOptionValue("threads"));
 
         ThreadPoolAutoPruner threadPoolAutoPruner = new ThreadPoolAutoPruner(threads);
-        threadPoolAutoPruner.recursivelyProcessFiles(new File(directoryPath), 0);
+        threadPoolAutoPruner.recursivelyProcessFiles(new File(directoryPath), 0, dryRun);
         threadPoolAutoPruner.close();
       } else {
-        AutoPruner.recursivelyProcessFiles(new File(directoryPath), 0);
+        AutoPruner.recursivelyProcessFiles(new File(directoryPath), 0, dryRun);
       }
     } else {
       new AutoPrunerGui().buildAndRunGui();
@@ -62,6 +67,14 @@ public class AutoPrunerCLIMain {
         "Number of threads to use");
     threadOption.setRequired(false);
     options.addOption(threadOption);
+
+    Option dryRunOption = new Option(
+        "n",
+        "dry-run",
+        false,
+        "Preview changes without modifying any files");
+    dryRunOption.setRequired(false);
+    options.addOption(dryRunOption);
 
     CommandLineParser parser = new DefaultParser();
     HelpFormatter formatter = new HelpFormatter();

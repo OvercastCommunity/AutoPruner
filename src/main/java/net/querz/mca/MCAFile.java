@@ -8,6 +8,9 @@ import java.util.Iterator;
 
 public class MCAFile implements Iterable<Chunk> {
 
+  /** Number of chunks in a region: a 32x32 grid. */
+  public static final int CHUNK_COUNT = 1024;
+
   private final int regionX;
   private final int regionZ;
   private Chunk[] chunks;
@@ -46,15 +49,17 @@ public class MCAFile implements Iterable<Chunk> {
    * @throws IOException If something went wrong during deserialization.
    */
   public void deserialize(RandomAccessFile raf) throws IOException {
-    chunks = new Chunk[1024];
-    for (int i = 0; i < 1024; i++) {
+    chunks = new Chunk[CHUNK_COUNT];
+    for (int i = 0; i < CHUNK_COUNT; i++) {
       raf.seek(i * 4);
-      int offset = raf.read() << 16;
-      offset |= (raf.read() & 0xFF) << 8;
-      offset |= raf.read() & 0xFF;
-      if (raf.readByte() == 0) {
-        continue;
+      int b0 = raf.read();
+      int b1 = raf.read();
+      int b2 = raf.read();
+      int sectorCount = raf.read();
+      if (sectorCount < 1) {
+        continue; // unused chunk slot, or a truncated/empty header
       }
+      int offset = (b0 << 16) | ((b1 & 0xFF) << 8) | (b2 & 0xFF);
       raf.seek(4096 + i * 4);
       int timestamp = raf.readInt();
       Chunk chunk = new Chunk(timestamp);
@@ -72,16 +77,18 @@ public class MCAFile implements Iterable<Chunk> {
    * @throws IOException If something went wrong during deserialization.
    */
   public void deserialize(ByteArrayInputStream inputStream) throws IOException {
-    chunks = new Chunk[1024];
-    for (int i = 0; i < 1024; i++) {
+    chunks = new Chunk[CHUNK_COUNT];
+    for (int i = 0; i < CHUNK_COUNT; i++) {
       inputStream.reset();
       inputStream.skip(i * 4);
-      int offset = inputStream.read() << 16;
-      offset |= (inputStream.read() & 0xFF) << 8;
-      offset |= inputStream.read() & 0xFF;
-      if (inputStream.read() == 0) {
-        continue;
+      int b0 = inputStream.read();
+      int b1 = inputStream.read();
+      int b2 = inputStream.read();
+      int sectorCount = inputStream.read();
+      if (sectorCount < 1) {
+        continue; // unused chunk slot, or a truncated/empty header
       }
+      int offset = (b0 << 16) | ((b1 & 0xFF) << 8) | (b2 & 0xFF);
       inputStream.reset();
       inputStream.skip(4096 + i * 4);
       int ch1 = inputStream.read();
@@ -112,8 +119,6 @@ public class MCAFile implements Iterable<Chunk> {
     int lastWritten = 0;
     int timestamp = (int) (System.currentTimeMillis() / 1000L);
     int chunksWritten = 0;
-    int chunkXOffset = MCAUtil.regionToChunk(regionX);
-    int chunkZOffset = MCAUtil.regionToChunk(regionZ);
 
     if (chunks == null) {
       return 0;
@@ -127,7 +132,7 @@ public class MCAFile implements Iterable<Chunk> {
           continue;
         }
         raf.seek(4096L * globalOffset);
-        lastWritten = chunk.serialize(raf, chunkXOffset + cx, chunkZOffset + cz);
+        lastWritten = chunk.serialize(raf);
 
         if (lastWritten == 0) {
           continue;
@@ -160,7 +165,7 @@ public class MCAFile implements Iterable<Chunk> {
   }
 
   /**
-   * Set a specific Chunk at a specific index. The index must be in range of 0 - 1023.
+   * Sets the Chunk at a specific index, which must be in range {@code [0, CHUNK_COUNT)}.
    *
    * @param index The index of the Chunk.
    * @param chunk The Chunk to be set.
@@ -169,7 +174,7 @@ public class MCAFile implements Iterable<Chunk> {
   public void setChunk(int index, Chunk chunk) {
     checkIndex(index);
     if (chunks == null) {
-      chunks = new Chunk[1024];
+      chunks = new Chunk[CHUNK_COUNT];
     }
     chunks[index] = chunk;
   }
@@ -189,7 +194,7 @@ public class MCAFile implements Iterable<Chunk> {
   }
 
   private int checkIndex(int index) {
-    if (index < 0 || index > 1023) {
+    if (index < 0 || index >= CHUNK_COUNT) {
       throw new IndexOutOfBoundsException();
     }
     return index;

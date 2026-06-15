@@ -10,6 +10,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import java.awt.Dimension;
 import java.io.File;
+import java.util.function.Consumer;
 
 public class AutoPrunerGui {
 
@@ -45,13 +46,16 @@ public class AutoPrunerGui {
         File file = fc.getSelectedFile();
         textArea.append("Selected: " + file.getAbsolutePath() + "\n");
 
-        new SwingWorker() {
+        new SwingWorker<Long, Void>() {
           @Override
-          protected Object doInBackground() {
-            return AutoPruner.recursivelyProcessFiles(
-                file,
-                28,
-                (message) -> textArea.append(message + "\n"));
+          protected Long doInBackground() {
+            Consumer<String> log = message -> textArea.append(message + "\n");
+            PruneSummary summary = new PruneSummary();
+            long sizeDeleted = AutoPruner.recursivelyProcessFiles(file, 0, log, log, false, summary);
+            if (summary.changedFiles() >= AutoPruner.SUMMARY_THRESHOLD) {
+              log.accept(System.lineSeparator() + summary.format(false));
+            }
+            return sizeDeleted;
           }
         }.execute();
       } else {

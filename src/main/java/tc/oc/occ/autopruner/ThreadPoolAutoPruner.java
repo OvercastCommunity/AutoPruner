@@ -14,45 +14,51 @@ import java.util.logging.Logger;
 
 public class ThreadPoolAutoPruner {
   private final ExecutorService threadPoolExecutor;
-  private final Logger logger;
+  private final Logger logger = AutoPruner.logger;
 
   public ThreadPoolAutoPruner(int threadCount) {
     this.threadPoolExecutor = Executors.newFixedThreadPool(threadCount);
-    System.setProperty("java.util.logging.SimpleFormatter.format",
-        "%1$tF %1$tT %4$s %2$s %5$s%6$s%n");
-    logger = Logger.getLogger("AutoPruner");
   }
 
   /**
-   * Recursively prune directories using consumer to log
+   * Recursively prunes a directory tree across the thread pool, logging through the shared logger.
    *
-   * @param file
-   * @param depth
    * @return bytes removed
    */
   public long recursivelyProcessFiles(File file, long depth) throws ExecutionException, InterruptedException {
-    long sizeDeleted = recursivelyProcessFiles(file, depth, logger::info, logger::warning);
-    logger.info("Deleted " + AutoPruner.readableFileSize(sizeDeleted) + " from: " + file.getAbsolutePath());
-    return sizeDeleted;
+    return recursivelyProcessFiles(file, depth, false);
   }
 
   /**
-   * Recursively prune directories using consumer to log
+   * Recursively prunes (or, when {@code dryRun}, only previews) a directory tree across the thread
+   * pool, logging through the shared logger.
    *
-   * @param file
-   * @param depth
-   * @param logging
    * @return bytes removed
    */
-  public long recursivelyProcessFiles(File file, long depth, Consumer<String> logging, Consumer<String> warnLogging) throws ExecutionException, InterruptedException {
-    List<Future<Long>> futures = recursivelyProcessFilesInternal(file, depth, logging, warnLogging);
-
+  public long recursivelyProcessFiles(File file, long depth, boolean dryRun) throws ExecutionException, InterruptedException {
+    PruneSummary summary = new PruneSummary();
     long sizeDeleted = 0;
-
-    for (Future<Long> future : futures) {
+    for (Future<Long> future : recursivelyProcessFilesInternal(file, depth, logger::info, logger::warning, dryRun, summary)) {
       sizeDeleted += future.get();
     }
+    logger.info((dryRun ? "Would delete " : "Deleted ") + AutoPruner.readableFileSize(sizeDeleted) + " from: " + file.getAbsolutePath());
+    if (summary.changedFiles() >= AutoPruner.SUMMARY_THRESHOLD) {
+      logger.info(System.lineSeparator() + summary.format(dryRun));
+    }
+    return sizeDeleted;
+  }
 
+  /** @return bytes removed */
+  public long recursivelyProcessFiles(File file, long depth, Consumer<String> logging, Consumer<String> warnLogging) throws ExecutionException, InterruptedException {
+    return recursivelyProcessFiles(file, depth, logging, warnLogging, false);
+  }
+
+  /** @return bytes removed */
+  public long recursivelyProcessFiles(File file, long depth, Consumer<String> logging, Consumer<String> warnLogging, boolean dryRun) throws ExecutionException, InterruptedException {
+    long sizeDeleted = 0;
+    for (Future<Long> future : recursivelyProcessFilesInternal(file, depth, logging, warnLogging, dryRun, null)) {
+      sizeDeleted += future.get();
+    }
     return sizeDeleted;
   }
 
@@ -60,8 +66,10 @@ public class ThreadPoolAutoPruner {
       File file,
       long depth,
       Consumer<String> infoLogging,
-      Consumer<String> warnLogging) {
-    if (depth > 30) {
+      Consumer<String> warnLogging,
+      boolean dryRun,
+      PruneSummary summary) {
+    if (depth > AutoPruner.MAX_RECURSION_DEPTH) {
       return Collections.emptyList();
     }
     List<Future<Long>> futures = new ArrayList<>();
@@ -69,9 +77,9 @@ public class ThreadPoolAutoPruner {
     if (files != null) {
       for (File childFile : files) {
         if (childFile.isDirectory()) {
-          futures.addAll(recursivelyProcessFilesInternal(childFile, depth, infoLogging, warnLogging));
+          futures.addAll(recursivelyProcessFilesInternal(childFile, depth + 1, infoLogging, warnLogging, dryRun, summary));
         } else if (childFile.isFile() && childFile.getName().endsWith(".mca")) {
-          Callable<Long> callable = () -> AutoPruner.pruneMCAFile(childFile.getAbsolutePath(), infoLogging, warnLogging);
+          Callable<Long> callable = () -> AutoPruner.pruneMCAFile(childFile.getAbsolutePath(), infoLogging, warnLogging, dryRun, summary);
           futures.add(threadPoolExecutor.submit(callable));
         }
       }
