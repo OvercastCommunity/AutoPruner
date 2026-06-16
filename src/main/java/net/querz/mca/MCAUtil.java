@@ -28,6 +28,7 @@ public final class MCAUtil {
     byte[] bytes = Files.readAllBytes(file.toPath());
     MCAFile mcaFile = newMCAFile(file);
     mcaFile.deserialize(new ByteArrayInputStream(bytes));
+    mcaFile.analyzeLayout(bytes);
     return mcaFile;
   }
 

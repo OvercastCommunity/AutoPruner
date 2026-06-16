@@ -73,6 +73,44 @@ public class ChunkContentTest {
   }
 
   // ---------------------------------------------------------------------------------------------
+  // Modern, custom-floor dimensions (e.g. PGM dimensions that set min_y=0)
+  //
+  // A custom dimension can move the world floor (min_y) off the vanilla -64, so a chunk's sections
+  // start at Y=0 with no negative-Y sections at all. The keep/prune decision inspects each
+  // section's block palette and never reads the section Y, so it must behave the same regardless
+  // of where the floor sits. (min_y itself lives in the dimension type, not the region file, so it
+  // is never touched.)
+  // ---------------------------------------------------------------------------------------------
+
+  @Test
+  public void modernMinY0ChunkWithBlocksIsKept() {
+    Chunk chunk = new Chunk(modernChunk(
+        modernSection(0, "minecraft:air", "minecraft:stone"),
+        modernSection(1, "minecraft:air"),
+        modernSection(2, "minecraft:air")));
+    assertTrue(chunk.hasContent(null));
+  }
+
+  @Test
+  public void modernMinY0EmptyChunkIsPruned() {
+    Chunk chunk = new Chunk(modernChunk(
+        modernSection(0, "minecraft:air"),
+        modernSection(1, "minecraft:air"),
+        modernSection(2, "minecraft:air")));
+    assertFalse(chunk.hasContent(null));
+  }
+
+  @Test
+  public void modernPruneDecisionIsIndependentOfSectionY() {
+    // The same single-stone section keeps the chunk no matter which Y it claims, proving the
+    // decision reads the block palette rather than any assumed Y range.
+    for (int y : new int[]{-4, 0, 4, 19}) {
+      Chunk chunk = new Chunk(modernChunk(modernSection(y, "minecraft:air", "minecraft:stone")));
+      assertTrue("block at section Y=" + y + " should be kept", chunk.hasContent(null));
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // Flattened (1.13 - 1.17)
   // ---------------------------------------------------------------------------------------------
 

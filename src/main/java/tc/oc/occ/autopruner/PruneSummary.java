@@ -11,11 +11,12 @@ import java.util.Map;
 public final class PruneSummary {
 
   /** What happened to a single region file. */
-  public enum Outcome { SKIPPED, PRUNED, DELETED }
+  public enum Outcome { SKIPPED, COMPACTED, PRUNED, DELETED }
 
   private static final class EraTally {
     long files;
     long skipped;
+    long compacted;
     long pruned;
     long deleted;
     long chunksRemoved;
@@ -33,6 +34,9 @@ public final class PruneSummary {
       case SKIPPED:
         tally.skipped++;
         break;
+      case COMPACTED:
+        tally.compacted++;
+        break;
       case PRUNED:
         tally.pruned++;
         break;
@@ -42,11 +46,11 @@ public final class PruneSummary {
     }
   }
 
-  /** Region files that were pruned or deleted (the count a summary threshold is compared against). */
+  /** Region files that changed on disk — compacted, pruned, or deleted (the count a summary threshold is compared against). */
   public synchronized long changedFiles() {
     long changed = 0;
     for (EraTally tally : tallies.values()) {
-      changed += tally.pruned + tally.deleted;
+      changed += tally.compacted + tally.pruned + tally.deleted;
     }
     return changed;
   }
@@ -55,6 +59,7 @@ public final class PruneSummary {
   public synchronized String format(boolean dryRun) {
     long totalFiles = 0;
     long totalSkipped = 0;
+    long totalCompacted = 0;
     long totalPruned = 0;
     long totalDeleted = 0;
     long totalChunks = 0;
@@ -67,6 +72,7 @@ public final class PruneSummary {
       out.append(System.lineSeparator()).append("  ").append(formatRow(entry.getKey(), tally));
       totalFiles += tally.files;
       totalSkipped += tally.skipped;
+      totalCompacted += tally.compacted;
       totalPruned += tally.pruned;
       totalDeleted += tally.deleted;
       totalChunks += tally.chunksRemoved;
@@ -76,6 +82,7 @@ public final class PruneSummary {
     EraTally total = new EraTally();
     total.files = totalFiles;
     total.skipped = totalSkipped;
+    total.compacted = totalCompacted;
     total.pruned = totalPruned;
     total.deleted = totalDeleted;
     total.chunksRemoved = totalChunks;
@@ -86,8 +93,8 @@ public final class PruneSummary {
 
   private static String formatRow(String label, EraTally tally) {
     return String.format(
-        "%-26s %d files (%d skipped, %d pruned, %d deleted), %d chunks removed, %s reclaimed",
-        label, tally.files, tally.skipped, tally.pruned, tally.deleted, tally.chunksRemoved,
-        AutoPruner.readableFileSize(tally.bytesReclaimed));
+        "%-26s %d files (%d skipped, %d compacted, %d pruned, %d deleted), %d chunks removed, %s reclaimed",
+        label, tally.files, tally.skipped, tally.compacted, tally.pruned, tally.deleted,
+        tally.chunksRemoved, AutoPruner.readableFileSize(tally.bytesReclaimed));
   }
 }

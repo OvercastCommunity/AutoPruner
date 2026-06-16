@@ -210,6 +210,23 @@ public interface AutoPruner {
         } else {
           infoLogging.accept("Deleted " + readableFileSize(sizeChange) + " from: " + path + version);
         }
+      } else if (mcaFile.hasReclaimableSpace()) {
+        // No empty chunks, but the file wastes sectors (gaps, trailing padding, over-allocated
+        // slots). Rewriting it back-to-back reclaims that space without altering chunk content.
+        if (!dryRun) {
+          MCAUtil.write(mcaFile, path);
+          sizeChange = initialSize - regionFile.length();
+        } else {
+          sizeChange = mcaFile.getReclaimableBytes(); // estimate; the real rewrite measures exactly
+        }
+        if (summary != null) {
+          summary.record(era, PruneSummary.Outcome.COMPACTED, 0, sizeChange);
+        }
+        if (dryRun) {
+          infoLogging.accept("Would compact (reclaim ~" + readableFileSize(sizeChange) + "): " + path + version);
+        } else {
+          infoLogging.accept("Compacted " + readableFileSize(sizeChange) + " from: " + path + version);
+        }
       } else {
         if (summary != null) {
           summary.record(era, PruneSummary.Outcome.SKIPPED, 0, 0);

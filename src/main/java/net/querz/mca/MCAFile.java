@@ -14,6 +14,7 @@ public class MCAFile implements Iterable<Chunk> {
   private final int regionX;
   private final int regionZ;
   private Chunk[] chunks;
+  private long reclaimableSectors;
 
   /**
    * MCAFile represents a world save file used by Minecraft to store world
@@ -162,6 +163,54 @@ public class MCAFile implements Iterable<Chunk> {
       raf.write(0);
     }
     return chunksWritten;
+  }
+
+  /**
+   * Measures, from the raw file bytes, how many 4 KB sectors the file wastes versus a tightly
+   * packed layout: gaps between chunks, trailing padding, or slots allocated more sectors than
+   * their data needs. A rewrite reclaims this space. Since {@link #serialize} packs chunks
+   * back-to-back, an already-compacted file reports zero here, keeping the prune idempotent.
+   */
+  void analyzeLayout(byte[] raw) {
+    long fileSectors = (raw.length + 4095) / 4096;
+    long neededSectors = 2; // location + timestamp header tables
+    for (int i = 0; i < CHUNK_COUNT; i++) {
+      int entry = i * 4;
+      if (entry + 3 >= raw.length) {
+        break;
+      }
+      int sectorCount = raw[entry + 3] & 0xFF;
+      if (sectorCount < 1) {
+        continue;
+      }
+      int offset = ((raw[entry] & 0xFF) << 16) | ((raw[entry + 1] & 0xFF) << 8) | (raw[entry + 2] & 0xFF);
+      int dataPos = offset * 4096;
+      if (dataPos < 0 || dataPos + 4 > raw.length) {
+        continue;
+      }
+      int declaredLen = ((raw[dataPos] & 0xFF) << 24) | ((raw[dataPos + 1] & 0xFF) << 16)
+          | ((raw[dataPos + 2] & 0xFF) << 8) | (raw[dataPos + 3] & 0xFF);
+      if (declaredLen < 1) {
+        continue;
+      }
+      neededSectors += (declaredLen + 4 + 4095) / 4096; //+4: data-length prefix
+    }
+    reclaimableSectors = Math.max(0, fileSectors - neededSectors);
+  }
+
+  /** @return wasted sectors a defragmenting rewrite would reclaim; see {@link #analyzeLayout}. */
+  public long getReclaimableSectors() {
+    return reclaimableSectors;
+  }
+
+  /** @return an estimate of the bytes a defragmenting rewrite would reclaim. */
+  public long getReclaimableBytes() {
+    return reclaimableSectors * 4096;
+  }
+
+  /** @return whether a rewrite would reclaim wasted space (gaps, trailing padding, over-allocation). */
+  public boolean hasReclaimableSpace() {
+    return reclaimableSectors > 0;
   }
 
   /**
